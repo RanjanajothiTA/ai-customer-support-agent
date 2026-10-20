@@ -93,5 +93,54 @@ def create_tables():
     print("Refunds table created successfully.")
     print("Support tickets table created successfully.")
 
+def create_conversation_tables():
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS conversations (
+            conversation_id TEXT PRIMARY KEY,
+            customer_id TEXT NOT NULL,
+            current_order_id TEXT,
+            current_issue TEXT,
+            last_intent TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS conversation_messages (
+            message_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+            FOREIGN KEY (conversation_id)
+                REFERENCES conversations(conversation_id)
+                ON DELETE CASCADE
+        )
+    """)
+    
+    # Add the pending cancellation field to existing databases.
+    columns = [
+        row[1]
+        for row in cursor.execute(
+            "PRAGMA table_info(conversations)"
+        ).fetchall()
+    ]
+
+    if "pending_cancellation_order_id" not in columns:
+        cursor.execute(
+            """
+            ALTER TABLE conversations
+            ADD COLUMN pending_cancellation_order_id TEXT
+            """
+        )
+
+    connection.commit()
+    connection.close()
+
+    print("Conversation tables created successfully.")
 if __name__ == "__main__":
     create_tables()

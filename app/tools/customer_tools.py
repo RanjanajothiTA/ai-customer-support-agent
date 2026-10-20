@@ -10,19 +10,26 @@ def get_customer_details(customer_id):
             "error": "customer_id is required"
         }
 
-    connection = get_connection()
-    cursor = connection.cursor()
+    connection = None
 
-    cursor.execute(
-        "SELECT * FROM customers WHERE customer_id = ?",
-        (customer_id,)
-    )
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
 
-    result = cursor.fetchone()
+        cursor.execute(
+            "SELECT * FROM customers WHERE customer_id = ?",
+            (customer_id,)
+        )
 
-    connection.close()
+        result = cursor.fetchone()
 
-    if result:
+        if not result:
+            return {
+                "success": False,
+                "data": None,
+                "error": "Customer not found"
+            }
+
         return {
             "success": True,
             "data": {
@@ -34,8 +41,13 @@ def get_customer_details(customer_id):
             "error": None
         }
 
-    return {
-        "success": False,
-        "data": None,
-        "error": "Customer not found"
-    }
+    except Exception:
+        return {
+            "success": False,
+            "data": None,
+            "error": "Unable to retrieve customer details right now"
+        }
+
+    finally:
+        if connection is not None:
+            connection.close()

@@ -1,22 +1,39 @@
+
 from app.database.database import get_connection
 
-def check_refund_status(order_id, customer_id):
 
+def check_refund_status(order_id, customer_id):
     if not order_id or not customer_id:
         return {
             "success": False,
             "data": None,
             "error": "order_id and customer_id are required"
         }
-    connection = get_connection()
-    cursor = connection.cursor()
-    cursor.execute(
-        "SELECT * FROM refunds WHERE order_id = ? AND customer_id = ?",
-        (order_id, customer_id)
-    )
-    result = cursor.fetchone()
-    connection.close()
-    if result:
+
+    connection = None
+
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT *
+            FROM refunds
+            WHERE order_id = ? AND customer_id = ?
+            """,
+            (order_id, customer_id)
+        )
+
+        result = cursor.fetchone()
+
+        if not result:
+            return {
+                "success": False,
+                "data": None,
+                "error": "Refund not found"
+            }
+
         return {
             "success": True,
             "data": {
@@ -29,8 +46,14 @@ def check_refund_status(order_id, customer_id):
             },
             "error": None
         }
-    return {
-        "success": False,
-        "data": None,
-        "error": "Refund not found"
-    }
+
+    except Exception:
+        return {
+            "success": False,
+            "data": None,
+            "error": "Unable to retrieve refund status right now"
+        }
+
+    finally:
+        if connection is not None:
+            connection.close()

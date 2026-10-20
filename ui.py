@@ -1,3 +1,6 @@
+import uuid
+from typing import Any
+
 import requests
 import streamlit as st
 
@@ -76,7 +79,11 @@ st.markdown(
 # BACKEND API
 # ============================================================
 
-def send_message_to_backend(message):
+def send_message_to_backend(
+    message: str,
+    customer_id: str,
+    conversation_id: str
+) -> dict[str, Any]:
     """
     Send the user's message to the FastAPI backend.
 
@@ -90,13 +97,35 @@ def send_message_to_backend(message):
 
     response = requests.post(
         CHAT_ENDPOINT,
-        json={"message": message},
+        json={
+            "message": message,
+            "customer_id": customer_id,
+            "conversation_id": conversation_id
+        },
         timeout=60
     )
 
     response.raise_for_status()
 
-    return response.json()
+    result = response.json()
+    if not isinstance(result, dict) or not isinstance(
+        result.get("response"), str
+    ):
+        raise ValueError("The backend returned an unexpected response.")
+
+    sources = result.get("sources", [])
+    if not isinstance(sources, list) or any(
+        not isinstance(source, dict)
+        or not isinstance(source.get("source"), str)
+        or not isinstance(source.get("chunk_id"), int)
+        for source in sources
+    ):
+        raise ValueError("The backend returned invalid source information.")
+
+    return {
+        "response": result["response"],
+        "sources": sources
+    }
 
 
 # ============================================================
@@ -109,8 +138,8 @@ if "messages" not in st.session_state:
             "role": "assistant",
             "content": (
                 "Hi! I'm the ShopEase AI Support Agent. "
-                "I can currently answer questions using the ShopEase "
-                "knowledge base."
+                "I can help with orders, refunds, cancellations, "
+                "and ShopEase policies."
             ),
             "sources": []
         }
@@ -124,6 +153,9 @@ if "last_user_message" not in st.session_state:
 
 if "backend_status" not in st.session_state:
     st.session_state.backend_status = "Unknown"
+
+if "conversation_id" not in st.session_state:
+    st.session_state.conversation_id = uuid.uuid4().hex
 
 
 # ============================================================
@@ -149,7 +181,8 @@ with st.sidebar:
     )
 
     st.caption(
-        "Customer tools will use this ID when the agent layer is connected."
+        "Requests are scoped to this customer ID. "
+        "This demo does not authenticate customer identities."
     )
 
     st.divider()
@@ -161,8 +194,7 @@ with st.sidebar:
     st.subheader("Quick Actions")
 
     st.info(
-        "Knowledge-base questions are currently supported. "
-        "Business tools will be connected through the agent layer."
+        "Ask about orders, refunds, policies, or cancellation requests."
     )
 
     if st.button(
@@ -196,6 +228,26 @@ with st.sidebar:
         st.session_state.quick_question = (
             "What is the warranty policy?"
         )
+
+if "active_customer_id" not in st.session_state:
+    st.session_state.active_customer_id = customer_id
+elif st.session_state.active_customer_id != customer_id:
+    st.session_state.active_customer_id = customer_id
+    st.session_state.conversation_id = uuid.uuid4().hex
+    st.session_state.messages = [
+        {
+            "role": "assistant",
+            "content": (
+                "Hi! I'm the ShopEase AI Support Agent. "
+                "I can help with orders, refunds, cancellations, "
+                "and ShopEase policies."
+            ),
+            "sources": []
+        }
+    ]
+    st.session_state.latest_sources = []
+    st.session_state.last_user_message = ""
+    st.session_state.backend_status = "Unknown"
 
 
 # ============================================================
@@ -300,7 +352,8 @@ if quick_question:
 # PROCESS USER MESSAGE
 # ============================================================
 
-if user_input:
+if user_input and user_input.strip():
+    user_input = user_input.strip()
 
     # --------------------------------------------------------
     # Display user message
@@ -324,17 +377,14 @@ if user_input:
 
         try:
 
-            result = send_message_to_backend(user_input)
-
-            answer = result.get(
-                "response",
-                "No response received from the backend."
+            result = send_message_to_backend(
+                user_input,
+                customer_id.strip(),
+                st.session_state.conversation_id
             )
 
-            sources = result.get(
-                "sources",
-                []
-            )
+            answer = result["response"]
+            sources = result["sources"]
 
             st.session_state.latest_sources = sources
             st.session_state.backend_status = "Connected"
@@ -389,7 +439,9 @@ if user_input:
         except requests.exceptions.HTTPError as error:
 
             error_message = (
-                f"⚠️ The backend returned an HTTP error: {error}"
+                "⚠️ The backend rejected this request "
+                f"(HTTP {error.response.status_code}). "
+                "Please check the customer ID and try again."
             )
 
             st.session_state.messages.append(
@@ -402,11 +454,27 @@ if user_input:
 
             st.session_state.backend_status = "HTTP Error"
 
-        except Exception:
+        except ValueError:
 
             error_message = (
-                "⚠️ Something went wrong while processing "
-                "your request."
+                "⚠️ The support service returned an unexpected response. "
+                "Please try again."
+            )
+
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": error_message,
+                    "sources": []
+                }
+            )
+
+            st.session_state.backend_status = "Error"
+
+        except requests.exceptions.RequestException:
+            error_message = (
+                "⚠️ The support service could not complete the request. "
+                "Please try again."
             )
 
             st.session_state.messages.append(
