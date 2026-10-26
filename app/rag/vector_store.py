@@ -11,10 +11,10 @@ def create_index(embeddings):
     return index
 
 def save_index(index, file_path):
-    faiss.write_index(index, file_path)
+    faiss.write_index(index, str(file_path))
 
 def save_chunks(chunks, file_path):
-    with open(file_path, "w", encoding="utf-8") as file:
+    with open(str(file_path), "w", encoding="utf-8") as file:
         json.dump(chunks, file, ensure_ascii=False, indent=2)
 
 def load_index(file_path):

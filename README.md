@@ -52,18 +52,37 @@ by Git. Never commit or share the key.
 
 ### Required local data
 
-The application expects these files at runtime:
+The application uses the following files:
 
-- `data/database/shopease.db` — initialized SQLite schema and demo records.
+- `data/database/shopease.db` — SQLite database containing the schema and demo
+  records.
 - `data/vector_store/chunks.json` and `data/vector_store/shopease.index` —
-  prebuilt RAG data.
-- `data/knowledge_base/*.pdf` — source policy and product documents.
+  generated RAG chunks and FAISS index.
+- `data/knowledge_base/*.pdf` — source policy and product documents tracked by
+  Git.
 
-The SQLite database and vector-store outputs are ignored by Git. The repository
-does not currently provide a complete database seed and vector-index build
-workflow. A new clone therefore needs approved local demo data and generated
-vector-store files before the full application can be run; creating only an
-empty SQLite database is not sufficient.
+The SQLite database and generated vector-store files are ignored by Git. On a
+fresh clone, create the demo database and build the vector store using the
+provided scripts:
+
+```powershell
+python scripts\init_demo_database.py
+python scripts\build_vector_store.py
+```
+
+The database initializer and vector-store builder protect existing files from
+accidental overwrites. If the target files already exist, review them before
+attempting to rebuild; do not use the vector-store builder's `--force` option
+unless you intentionally want to replace the existing artifacts.
+
+The vector-store builder reads the knowledge-base PDFs, generates embeddings,
+and creates the FAISS index and corresponding chunk file. The generated files
+are required before starting the full application.
+
+A clean-clone setup still needs to be verified using these documented steps.
+The setup scripts are present in this working tree but are not yet tracked by
+Git, so they must be included in a checkout before these commands are
+available there.
 
 ## Run the application
 
@@ -92,25 +111,41 @@ details.
 
 ## Tests
 
-Run the automated suite with:
+Run the automated test suite with:
 
 ```powershell
 python -m pytest -q
 ```
 
-The tests use the project's local database path. Some API tests persist
-conversation rows and the support-ticket success test creates a ticket, so run
-the suite against a disposable database copy rather than valuable or live data.
-The release-readiness report records the isolated test procedure used for this
-audit.
+The latest test run completed with **46 passed and 2 deprecation warnings**.
+The warnings originate from the installed Starlette/httpx and AnyIO
+dependencies; they did not fail the test suite.
+
+Verify that the RAG vector store can be rebuilt independently without
+overwriting the existing artifacts:
+
+```powershell
+python scripts\verify_rag_rebuild.py
+```
+
+The RAG rebuild verification checks that the index and chunks can be rebuilt
+and loaded together, retrieval returns relevant chunks, and a simulated
+chunk-save failure does not publish incomplete artifacts. The latest run
+passed all three checks.
+
+Some tests may write conversation or support-ticket records to SQLite. Run
+tests against a disposable database copy rather than valuable or live data.
+
+See [MVP 1 Release Readiness Report](./MVP1_RELEASE_READINESS_REPORT.md) for
+the audit scope, results, and remaining limitations.
 
 ## Known MVP limitations
 
 - There is no user authentication; customers can enter an ID in the UI.
 - SQLite, the local API URL, and the local data files are intended for a
   single-machine demo, not concurrent or production deployment.
-- Database seed data and generated vector-store files are not reproducibly
-  created by the current repository setup.
+- Database and vector-store setup scripts are available, but a fresh-clone
+  setup has not yet been verified end to end.
 - Support-ticket tooling exists, but a complete user-facing create-ticket
   conversation flow is not currently routed by the decision engine.
 - Dependencies in `requirements.txt` are not version-pinned.
